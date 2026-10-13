@@ -1,0 +1,4 @@
+repository "GameNetworkLab/GameNetworkLab@929675@cloud"
+  path "/"
+    br "/main"
+    co "/main"
