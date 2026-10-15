@@ -4,27 +4,34 @@ using UnityEngine.InputSystem;
 
 public class NetworkPlayerMove : NetworkBehaviour
 {
-    [SerializeField] private InputActionReference moveAction;
+    [SerializeField] private InputActionAsset inputActions;
     [SerializeField] private float speed = 4f;
 
+    private InputAction moveAction;
+
     public override void OnNetworkSpawn()
-    {
-        if (IsOwner)
-            moveAction.action.Enable();
-    }
-
-    public override void OnNetworkDespawn()
-    {
-        if (IsOwner)
-            moveAction.action.Disable();
-    }
-
-    private void Update()
     {
         if (!IsOwner)
             return;
 
-        Vector2 input = moveAction.action.ReadValue<Vector2>();
+        moveAction = inputActions.FindAction("Player/Move", true);
+        moveAction.Enable();
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (!IsOwner || moveAction == null)
+            return;
+
+        moveAction.Disable();
+    }
+
+    private void Update()
+    {
+        if (!IsOwner || moveAction == null)
+            return;
+
+        Vector2 input = moveAction.ReadValue<Vector2>();
 
         if (input.sqrMagnitude > 0f)
             MoveRequestRpc(input);
