@@ -168,7 +168,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NetworkPlayerMove
   ShowTopMostFoldoutHeaderGroup: 1
-  moveAction: {fileID: 0}
+  inputActions: {fileID: -944628639613478452, guid: 9e36b1ca87c5d3449acf298e3175e19c, type: 3}
   speed: 4
 --- !u!1 &967708552870915008
 GameObject:
