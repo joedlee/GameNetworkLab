@@ -55,25 +55,4 @@ public class NetworkLauncher : MonoBehaviour
             started ? "Client 연결 시도" : "Client 시작 실패";
     }
 
-    private void Update()
-    {
-        NetworkManager manager =
-            NetworkManager.Singleton;
-
-        if (manager == null)
-        {
-            return;
-        }
-
-        if (manager.IsHost)
-        {
-            statusText.text =
-                $"Host 실행 / 참여자 {manager.ConnectedClientsIds.Count}명";
-        }
-        else if (manager.IsConnectedClient)
-        {
-            statusText.text =
-                "Client 연결 완료";
-        }
-    }
 }
