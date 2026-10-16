@@ -1856,9 +1856,9 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1716638680}
-        m_TargetAssemblyTypeName: NetworkLauncher, Assembly-CSharp
-        m_MethodName: StartHost
+      - m_Target: {fileID: 1244713206}
+        m_TargetAssemblyTypeName: ConnectUiController, Assembly-CSharp
+        m_MethodName: StartHostFromButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
