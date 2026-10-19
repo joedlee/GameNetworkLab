@@ -1481,7 +1481,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1244713208}
         m_TargetAssemblyTypeName: GameDataApiClient, Assembly-CSharp
-        m_MethodName: SaveTestScore
+        m_MethodName: SaveCurrentPlayerScore
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -1586,7 +1586,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "DB 점수 저장"
+  m_text: "현재 점수 DB 저장"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 01db5b5a8851d0840aca2397a5cbb852, type: 2}
   m_sharedMaterial: {fileID: 1512415055898062074, guid: 01db5b5a8851d0840aca2397a5cbb852, type: 2}
@@ -2222,10 +2222,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameDataApiClient
   baseUrl: http://127.0.0.1:5000
-  testPlayerId: test-player-002
-  testSaveScore: 300
   statusText: {fileID: 1391626194}
-  testOnStart: 1
 --- !u!4 &1244713207
 Transform:
   m_ObjectHideFlags: 0
