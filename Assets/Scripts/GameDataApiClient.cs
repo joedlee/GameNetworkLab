@@ -1,26 +1,21 @@
 using System;
 using System.Text;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using TMPro;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Networking;
 
 public class GameDataApiClient : MonoBehaviour
 {
+    public static GameDataApiClient Instance { get; private set; }
+
     [SerializeField]
     private string baseUrl = "http://127.0.0.1:5000";
 
     [SerializeField]
-    private string testPlayerId = "test-player-002";
-
-    [SerializeField]
-    private int testSaveScore = 300;
-
-    [SerializeField]
     private TextMeshProUGUI statusText;
-
-    [SerializeField]
-    private bool testOnStart = true;
 
     [Serializable]
     private class SaveScoreRequest
@@ -37,59 +32,53 @@ public class GameDataApiClient : MonoBehaviour
         public string lastSavedAt;
     }
 
-    private void Start()
+    private void Awake()
     {
-        if (testOnStart)
-            LoadTestScoreAsync().Forget();
+        Instance = this;
     }
 
-    public void LoadTestScore()
+    private void OnDestroy()
     {
-        LoadTestScoreAsync().Forget();
+        if (Instance == this)
+            Instance = null;
     }
 
-    public void SaveTestScore()
+    public async UniTask<PlayerScoreData> LoadScoreAsync(
+        string playerId,
+        CancellationToken cancellationToken = default)
     {
-        SaveTestScoreAsync().Forget();
-    }
-
-    private async UniTask LoadTestScoreAsync()
-    {
-        if (string.IsNullOrWhiteSpace(testPlayerId))
-        {
-            SetStatus("DB 조회 실패: PlayerId 없음");
-            return;
-        }
-
-        SetStatus("DB 점수 조회 중...");
+        if (string.IsNullOrWhiteSpace(playerId))
+            return null;
 
         string url =
-            $"{baseUrl.TrimEnd('/')}/score/{UnityWebRequest.EscapeURL(testPlayerId)}";
+            $"{baseUrl.TrimEnd('/')}/score/{UnityWebRequest.EscapeURL(playerId)}";
 
         using UnityWebRequest request = UnityWebRequest.Get(url);
 
         try
         {
             await request.SendWebRequest().ToUniTask(
-                cancellationToken: this.GetCancellationTokenOnDestroy());
+                cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            return;
+            return null;
         }
         catch (Exception exception)
         {
-            SetStatus($"DB 조회 실패: {exception.Message}");
             Debug.LogException(exception);
-            return;
+            return null;
         }
+
+        if (request.responseCode == 404)
+            return null;
 
         if (request.result != UnityWebRequest.Result.Success)
         {
-            SetStatus($"DB 조회 실패: HTTP {request.responseCode}");
             Debug.LogError(
-                $"GameDataServer 조회 실패\nURL: {url}\n응답: {request.downloadHandler.text}");
-            return;
+                $"GameDataServer 조회 실패\nURL: {url}\n" +
+                $"HTTP: {request.responseCode}\n응답: {request.downloadHandler.text}");
+            return null;
         }
 
         ScoreResponse response =
@@ -97,41 +86,33 @@ public class GameDataApiClient : MonoBehaviour
 
         if (response == null || string.IsNullOrWhiteSpace(response.playerId))
         {
-            SetStatus("DB 조회 실패: 응답 해석 실패");
-            Debug.LogError($"GameDataServer 응답 해석 실패: {request.downloadHandler.text}");
-            return;
+            Debug.LogError(
+                $"GameDataServer 응답 해석 실패: {request.downloadHandler.text}");
+            return null;
         }
 
-        PlayerScoreData data = new PlayerScoreData
+        return new PlayerScoreData
         {
             PlayerId = response.playerId,
             Score = response.score,
             LastSavedAt = response.lastSavedAt
         };
-
-        SetStatus($"DB 조회 성공: {data.PlayerId} / {data.Score}점");
-
-        Debug.Log(
-            $"Unity -> C# Server -> PostgreSQL 조회 성공 | " +
-            $"PlayerId={data.PlayerId}, Score={data.Score}, LastSavedAt={data.LastSavedAt}");
     }
 
-    private async UniTask SaveTestScoreAsync()
+    public async UniTask<PlayerScoreData> SaveScoreAsync(
+        string playerId,
+        int score,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(testPlayerId))
-        {
-            SetStatus("DB 저장 실패: PlayerId 없음");
-            return;
-        }
-
-        SetStatus($"DB 점수 저장 중... {testSaveScore}점");
+        if (string.IsNullOrWhiteSpace(playerId))
+            return null;
 
         string url = $"{baseUrl.TrimEnd('/')}/score";
 
         SaveScoreRequest saveData = new SaveScoreRequest
         {
-            PlayerId = testPlayerId,
-            Score = testSaveScore
+            PlayerId = playerId,
+            Score = score
         };
 
         string json = JsonUtility.ToJson(saveData);
@@ -150,25 +131,25 @@ public class GameDataApiClient : MonoBehaviour
         try
         {
             await request.SendWebRequest().ToUniTask(
-                cancellationToken: this.GetCancellationTokenOnDestroy());
+                cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            return;
+            return null;
         }
         catch (Exception exception)
         {
-            SetStatus($"DB 저장 실패: {exception.Message}");
             Debug.LogException(exception);
-            return;
+            return null;
         }
 
         if (request.result != UnityWebRequest.Result.Success)
         {
-            SetStatus($"DB 저장 실패: HTTP {request.responseCode}");
             Debug.LogError(
-                $"GameDataServer 저장 실패\nURL: {url}\n요청: {json}\n응답: {request.downloadHandler.text}");
-            return;
+                $"GameDataServer 저장 실패\nURL: {url}\n" +
+                $"HTTP: {request.responseCode}\n요청: {json}\n" +
+                $"응답: {request.downloadHandler.text}");
+            return null;
         }
 
         ScoreResponse response =
@@ -176,16 +157,60 @@ public class GameDataApiClient : MonoBehaviour
 
         if (response == null || string.IsNullOrWhiteSpace(response.playerId))
         {
-            SetStatus("DB 저장 실패: 응답 해석 실패");
-            Debug.LogError($"GameDataServer 응답 해석 실패: {request.downloadHandler.text}");
+            Debug.LogError(
+                $"GameDataServer 응답 해석 실패: {request.downloadHandler.text}");
+            return null;
+        }
+
+        return new PlayerScoreData
+        {
+            PlayerId = response.playerId,
+            Score = response.score,
+            LastSavedAt = response.lastSavedAt
+        };
+    }
+
+    public async UniTask<PlayerScoreData> LoadOrCreateScoreAsync(
+        string playerId,
+        int initialScore,
+        CancellationToken cancellationToken = default)
+    {
+        PlayerScoreData existing =
+            await LoadScoreAsync(playerId, cancellationToken);
+
+        if (existing != null)
+            return existing;
+
+        return await SaveScoreAsync(
+            playerId,
+            initialScore,
+            cancellationToken);
+    }
+
+    public void SaveCurrentPlayerScore()
+    {
+        NetworkManager manager = NetworkManager.Singleton;
+
+        if (manager == null ||
+            !manager.IsListening ||
+            manager.LocalClient == null ||
+            manager.LocalClient.PlayerObject == null)
+        {
+            SetStatus("현재 플레이어가 없습니다.");
             return;
         }
 
-        SetStatus($"DB 저장 성공: {response.playerId} / {response.score}점");
+        NetworkScorePlayer scorePlayer =
+            manager.LocalClient.PlayerObject.GetComponent<NetworkScorePlayer>();
 
-        Debug.Log(
-            $"Unity -> C# Server -> PostgreSQL 저장 성공 | " +
-            $"PlayerId={response.playerId}, Score={response.score}, LastSavedAt={response.lastSavedAt}");
+        if (scorePlayer == null)
+        {
+            SetStatus("NetworkScorePlayer를 찾을 수 없습니다.");
+            return;
+        }
+
+        scorePlayer.RequestSaveToDatabase();
+        SetStatus("현재 점수 DB 저장 요청");
     }
 
     private void SetStatus(string message)
