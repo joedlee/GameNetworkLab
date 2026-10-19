@@ -47,3 +47,16 @@ LastSavedAt
 
 패치 서버는 클라이언트의 현재 버전과 최신 버전을 비교하고,
 필요한 파일 목록과 버전 정보를 기준으로 업데이트 대상을 결정한다.
+
+## 접속 리포트
+
+Host 시작, Client 연결, Client 종료 상황에서는 최소한 시간, 이벤트 이름, Client 식별값을 남긴다.
+
+| 상황 | 시간 | 이벤트 이름 | Client 식별값 | 예시 로그 |
+| :--- | :--- | :--- | :--- | :--- |
+| Host 시작 | ISO 8601 시각 | `HostStarted` | Host의 ClientId | `2026-10-19T12:40:00+09:00 HostStarted ClientId=0` |
+| Client 연결 | ISO 8601 시각 | `ClientConnected` | 접속한 ClientId | `2026-10-19T12:40:12+09:00 ClientConnected ClientId=1` |
+| Client 종료 | ISO 8601 시각 | `ClientDisconnected` | 종료한 ClientId | `2026-10-19T12:41:03+09:00 ClientDisconnected ClientId=1` |
+
+이 로그를 남기면 운영자는 누가 언제 접속하고 종료했는지 확인할 수 있고,
+접속 실패나 비정상 종료가 발생했을 때 원인을 추적할 수 있다.
