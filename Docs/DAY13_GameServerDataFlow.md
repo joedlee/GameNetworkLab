@@ -7,3 +7,10 @@
 | Player가 코인에 닿음 | Game Server가 거리·중복 확인 | 게임 종료 또는 저장 시 DB에 Score 기록 | CoinCollected 횟수 |
 | Client 접속 실패 | 접속 모듈이 실패 반환 | 저장하지 않음 | 실패 시각·오류 코드 |
 | 새 버전 배포 | Patch 서버가 버전 비교 | 파일 목록·버전 정보 관리 | 적용 성공·실패 수 |
+
+## Score 저장 구조
+
+```text
+PlayerId
+Score
+LastSavedAt
