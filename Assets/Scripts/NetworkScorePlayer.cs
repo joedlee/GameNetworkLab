@@ -16,16 +16,27 @@ public class NetworkScorePlayer : NetworkBehaviour
     private bool hasPendingSave;
     private int pendingScore;
 
+    private string persistentPlayerId;
+
     private string PersistentPlayerId =>
-        $"client-{OwnerClientId}";
+        persistentPlayerId;
 
     public override void OnNetworkSpawn()
     {
         Score.OnValueChanged += OnScoreChanged;
         UpdateScoreText(Score.Value);
 
-        if (IsServer)
-            LoadScoreFromDatabaseAsync().Forget();
+        if (IsOwner)
+        {
+            string localPlayerId =
+                LocalPlayerIdentity.GetOrCreatePlayerId();
+
+            RegisterPersistentPlayerIdRpc(localPlayerId);
+
+            Debug.Log(
+                $"고정 PlayerId 등록 요청 | " +
+                $"OwnerClientId={OwnerClientId}, PlayerId={localPlayerId}");
+        }
     }
 
     public override void OnNetworkDespawn()
@@ -50,6 +61,44 @@ public class NetworkScorePlayer : NetworkBehaviour
     }
 
     [Rpc(SendTo.Server)]
+    private void RegisterPersistentPlayerIdRpc(string playerId)
+    {
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            Debug.LogWarning(
+                $"PlayerId 등록 실패: 빈 값 / OwnerClientId={OwnerClientId}");
+            return;
+        }
+
+        if (playerId.Length > 128)
+        {
+            Debug.LogWarning(
+                $"PlayerId 등록 실패: 너무 긴 값 / OwnerClientId={OwnerClientId}");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(persistentPlayerId))
+        {
+            if (persistentPlayerId != playerId)
+            {
+                Debug.LogWarning(
+                    $"이미 다른 PlayerId가 등록되어 있습니다. " +
+                    $"기존={persistentPlayerId}, 새 값={playerId}");
+            }
+
+            return;
+        }
+
+        persistentPlayerId = playerId;
+
+        Debug.Log(
+            $"고정 PlayerId 등록 완료 | " +
+            $"OwnerClientId={OwnerClientId}, PlayerId={PersistentPlayerId}");
+
+        LoadScoreFromDatabaseAsync().Forget();
+    }
+
+    [Rpc(SendTo.Server)]
     private void RequestAddScoreRpc()
     {
         Score.Value += 1;
@@ -61,6 +110,26 @@ public class NetworkScorePlayer : NetworkBehaviour
     [Rpc(SendTo.Server)]
     private void RequestSaveToDatabaseRpc()
     {
+        if (string.IsNullOrWhiteSpace(PersistentPlayerId))
+        {
+            Debug.LogWarning(
+                $"DB 저장 대기: 아직 PlayerId가 등록되지 않았습니다. " +
+                $"OwnerClientId={OwnerClientId}");
+            return;
+        }
+
+        if (!databaseReady)
+        {
+            pendingScore = Score.Value;
+            hasPendingSave = true;
+
+            Debug.Log(
+                $"DB 저장 대기: 점수 로드 중 / " +
+                $"PlayerId={PersistentPlayerId}, Score={Score.Value}");
+
+            return;
+        }
+
         QueueDatabaseSave(Score.Value);
     }
 
@@ -70,12 +139,25 @@ public class NetworkScorePlayer : NetworkBehaviour
     {
         UpdateScoreText(newValue);
 
-        if (IsServer && databaseReady && !databaseLoadInProgress)
+        if (IsServer &&
+            databaseReady &&
+            !databaseLoadInProgress &&
+            !string.IsNullOrWhiteSpace(PersistentPlayerId))
+        {
             QueueDatabaseSave(newValue);
+        }
     }
 
     private async UniTask LoadScoreFromDatabaseAsync()
     {
+        if (!IsServer ||
+            string.IsNullOrWhiteSpace(PersistentPlayerId) ||
+            databaseLoadInProgress ||
+            databaseReady)
+        {
+            return;
+        }
+
         GameDataApiClient api =
             GameDataApiClient.Instance ??
             FindFirstObjectByType<GameDataApiClient>();
@@ -93,10 +175,46 @@ public class NetworkScorePlayer : NetworkBehaviour
         int scoreAtLoadStart = Score.Value;
 
         PlayerScoreData data =
-            await api.LoadOrCreateScoreAsync(
+            await api.LoadScoreAsync(
                 PersistentPlayerId,
-                scoreAtLoadStart,
                 this.GetCancellationTokenOnDestroy());
+
+        if (data == null)
+        {
+            string legacyPlayerId =
+                $"client-{OwnerClientId}";
+
+            PlayerScoreData legacyData =
+                await api.LoadScoreAsync(
+                    legacyPlayerId,
+                    this.GetCancellationTokenOnDestroy());
+
+            if (legacyData != null)
+            {
+                data =
+                    await api.SaveScoreAsync(
+                        PersistentPlayerId,
+                        legacyData.Score,
+                        this.GetCancellationTokenOnDestroy());
+
+                if (data != null)
+                {
+                    Debug.Log(
+                        $"기존 임시 PlayerId 점수를 고정 PlayerId로 이전했습니다. " +
+                        $"{legacyPlayerId} -> {PersistentPlayerId}, " +
+                        $"Score={legacyData.Score}");
+                }
+            }
+        }
+
+        if (data == null)
+        {
+            data =
+                await api.SaveScoreAsync(
+                    PersistentPlayerId,
+                    scoreAtLoadStart,
+                    this.GetCancellationTokenOnDestroy());
+        }
 
         if (data != null)
         {
@@ -115,7 +233,7 @@ public class NetworkScorePlayer : NetworkBehaviour
             databaseReady = true;
             databaseLoadInProgress = false;
 
-            if (scoreDeltaDuringLoad != 0)
+            if (scoreDeltaDuringLoad != 0 || hasPendingSave)
                 QueueDatabaseSave(Score.Value);
 
             return;
@@ -131,6 +249,9 @@ public class NetworkScorePlayer : NetworkBehaviour
 
     private void QueueDatabaseSave(int score)
     {
+        if (string.IsNullOrWhiteSpace(PersistentPlayerId))
+            return;
+
         pendingScore = score;
         hasPendingSave = true;
 
@@ -140,6 +261,9 @@ public class NetworkScorePlayer : NetworkBehaviour
 
     private async UniTask FlushDatabaseSaveAsync()
     {
+        if (string.IsNullOrWhiteSpace(PersistentPlayerId))
+            return;
+
         GameDataApiClient api =
             GameDataApiClient.Instance ??
             FindFirstObjectByType<GameDataApiClient>();
