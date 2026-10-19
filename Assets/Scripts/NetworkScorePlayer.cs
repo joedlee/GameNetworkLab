@@ -16,10 +16,8 @@ public class NetworkScorePlayer : NetworkBehaviour
     private bool hasPendingSave;
     private int pendingScore;
 
-    private string persistentPlayerId;
-
-    private string PersistentPlayerId =>
-        persistentPlayerId;
+    private string authenticatedPlayerId;
+    private string authenticatedToken;
 
     public override void OnNetworkSpawn()
     {
@@ -28,20 +26,53 @@ public class NetworkScorePlayer : NetworkBehaviour
 
         if (IsOwner)
         {
-            string localPlayerId =
-                LocalPlayerIdentity.GetOrCreatePlayerId();
+            GameDataApiClient api =
+                GameDataApiClient.Instance;
 
-            RegisterPersistentPlayerIdRpc(localPlayerId);
-
-            Debug.Log(
-                $"고정 PlayerId 등록 요청 | " +
-                $"OwnerClientId={OwnerClientId}, PlayerId={localPlayerId}");
+            if (api != null &&
+                api.IsAuthenticated)
+            {
+                UseAuthenticatedAccount(
+                    api.AuthenticatedPlayerId,
+                    api.AuthToken);
+            }
+            else
+            {
+                Debug.Log(
+                    $"Player {OwnerClientId}: 로그인 전 상태로 생성됨");
+            }
         }
     }
 
     public override void OnNetworkDespawn()
     {
         Score.OnValueChanged -= OnScoreChanged;
+    }
+
+    public void UseAuthenticatedAccount(
+        string playerId,
+        string token)
+    {
+        if (!IsOwner)
+            return;
+
+        if (string.IsNullOrWhiteSpace(playerId) ||
+            string.IsNullOrWhiteSpace(token))
+        {
+            return;
+        }
+
+        RegisterAuthenticatedSessionRpc(
+            playerId,
+            token);
+    }
+
+    public void ClearAuthenticatedAccount()
+    {
+        if (!IsOwner)
+            return;
+
+        ClearAuthenticatedSessionRpc();
     }
 
     public void RequestAddScore()
@@ -61,41 +92,46 @@ public class NetworkScorePlayer : NetworkBehaviour
     }
 
     [Rpc(SendTo.Server)]
-    private void RegisterPersistentPlayerIdRpc(string playerId)
+    private void RegisterAuthenticatedSessionRpc(
+        string claimedPlayerId,
+        string token)
     {
-        if (string.IsNullOrWhiteSpace(playerId))
-        {
-            Debug.LogWarning(
-                $"PlayerId 등록 실패: 빈 값 / OwnerClientId={OwnerClientId}");
+        if (string.IsNullOrWhiteSpace(token))
             return;
-        }
 
-        if (playerId.Length > 128)
-        {
-            Debug.LogWarning(
-                $"PlayerId 등록 실패: 너무 긴 값 / OwnerClientId={OwnerClientId}");
-            return;
-        }
+        authenticatedPlayerId =
+            claimedPlayerId;
 
-        if (!string.IsNullOrWhiteSpace(persistentPlayerId))
-        {
-            if (persistentPlayerId != playerId)
-            {
-                Debug.LogWarning(
-                    $"이미 다른 PlayerId가 등록되어 있습니다. " +
-                    $"기존={persistentPlayerId}, 새 값={playerId}");
-            }
+        authenticatedToken =
+            token;
 
-            return;
-        }
-
-        persistentPlayerId = playerId;
+        databaseReady = false;
+        databaseLoadInProgress = false;
+        hasPendingSave = false;
 
         Debug.Log(
-            $"고정 PlayerId 등록 완료 | " +
-            $"OwnerClientId={OwnerClientId}, PlayerId={PersistentPlayerId}");
+            $"계정 세션 등록 | " +
+            $"OwnerClientId={OwnerClientId}, " +
+            $"ClaimedPlayerId={claimedPlayerId}");
 
-        LoadScoreFromDatabaseAsync().Forget();
+        LoadAuthenticatedScoreAsync().Forget();
+    }
+
+    [Rpc(SendTo.Server)]
+    private void ClearAuthenticatedSessionRpc()
+    {
+        authenticatedPlayerId =
+            null;
+
+        authenticatedToken =
+            null;
+
+        databaseReady = false;
+        databaseLoadInProgress = false;
+        hasPendingSave = false;
+
+        Debug.Log(
+            $"계정 세션 해제 | OwnerClientId={OwnerClientId}");
     }
 
     [Rpc(SendTo.Server)]
@@ -110,10 +146,10 @@ public class NetworkScorePlayer : NetworkBehaviour
     [Rpc(SendTo.Server)]
     private void RequestSaveToDatabaseRpc()
     {
-        if (string.IsNullOrWhiteSpace(PersistentPlayerId))
+        if (!HasAuthenticatedSession())
         {
             Debug.LogWarning(
-                $"DB 저장 대기: 아직 PlayerId가 등록되지 않았습니다. " +
+                $"DB 저장 실패: 로그인된 계정이 없습니다. " +
                 $"OwnerClientId={OwnerClientId}");
             return;
         }
@@ -124,13 +160,15 @@ public class NetworkScorePlayer : NetworkBehaviour
             hasPendingSave = true;
 
             Debug.Log(
-                $"DB 저장 대기: 점수 로드 중 / " +
-                $"PlayerId={PersistentPlayerId}, Score={Score.Value}");
+                $"DB 저장 대기: 계정 점수 로드 중 / " +
+                $"PlayerId={authenticatedPlayerId}, " +
+                $"Score={Score.Value}");
 
             return;
         }
 
-        QueueDatabaseSave(Score.Value);
+        QueueDatabaseSave(
+            Score.Value);
     }
 
     private void OnScoreChanged(
@@ -142,18 +180,18 @@ public class NetworkScorePlayer : NetworkBehaviour
         if (IsServer &&
             databaseReady &&
             !databaseLoadInProgress &&
-            !string.IsNullOrWhiteSpace(PersistentPlayerId))
+            HasAuthenticatedSession())
         {
-            QueueDatabaseSave(newValue);
+            QueueDatabaseSave(
+                newValue);
         }
     }
 
-    private async UniTask LoadScoreFromDatabaseAsync()
+    private async UniTask LoadAuthenticatedScoreAsync()
     {
         if (!IsServer ||
-            string.IsNullOrWhiteSpace(PersistentPlayerId) ||
-            databaseLoadInProgress ||
-            databaseReady)
+            !HasAuthenticatedSession() ||
+            databaseLoadInProgress)
         {
             return;
         }
@@ -165,91 +203,70 @@ public class NetworkScorePlayer : NetworkBehaviour
         if (api == null)
         {
             Debug.LogWarning(
-                $"DB 로드 건너뜀: GameDataApiClient 없음 / {PersistentPlayerId}");
-            databaseReady = true;
+                $"계정 점수 로드 실패: GameDataApiClient 없음");
             return;
         }
 
         databaseLoadInProgress = true;
 
-        int scoreAtLoadStart = Score.Value;
+        string tokenAtStart =
+            authenticatedToken;
+
+        int scoreAtLoadStart =
+            Score.Value;
 
         PlayerScoreData data =
-            await api.LoadScoreAsync(
-                PersistentPlayerId,
+            await api.LoadAccountScoreAsync(
+                tokenAtStart,
                 this.GetCancellationTokenOnDestroy());
 
-        if (data == null)
+        if (tokenAtStart != authenticatedToken)
         {
-            string legacyPlayerId =
-                $"client-{OwnerClientId}";
-
-            PlayerScoreData legacyData =
-                await api.LoadScoreAsync(
-                    legacyPlayerId,
-                    this.GetCancellationTokenOnDestroy());
-
-            if (legacyData != null)
-            {
-                data =
-                    await api.SaveScoreAsync(
-                        PersistentPlayerId,
-                        legacyData.Score,
-                        this.GetCancellationTokenOnDestroy());
-
-                if (data != null)
-                {
-                    Debug.Log(
-                        $"기존 임시 PlayerId 점수를 고정 PlayerId로 이전했습니다. " +
-                        $"{legacyPlayerId} -> {PersistentPlayerId}, " +
-                        $"Score={legacyData.Score}");
-                }
-            }
-        }
-
-        if (data == null)
-        {
-            data =
-                await api.SaveScoreAsync(
-                    PersistentPlayerId,
-                    scoreAtLoadStart,
-                    this.GetCancellationTokenOnDestroy());
-        }
-
-        if (data != null)
-        {
-            int scoreDeltaDuringLoad =
-                Score.Value - scoreAtLoadStart;
-
-            Score.Value =
-                data.Score + scoreDeltaDuringLoad;
-
-            Debug.Log(
-                $"DB 점수 불러오기 완료 | " +
-                $"PlayerId={PersistentPlayerId}, " +
-                $"SavedScore={data.Score}, " +
-                $"AppliedScore={Score.Value}");
-
-            databaseReady = true;
             databaseLoadInProgress = false;
-
-            if (scoreDeltaDuringLoad != 0 || hasPendingSave)
-                QueueDatabaseSave(Score.Value);
-
             return;
         }
+
+        if (data == null)
+        {
+            databaseLoadInProgress = false;
+            databaseReady = false;
+
+            Debug.LogWarning(
+                $"계정 점수 불러오기 실패 | " +
+                $"OwnerClientId={OwnerClientId}");
+            return;
+        }
+
+        authenticatedPlayerId =
+            data.PlayerId;
+
+        int scoreDeltaDuringLoad =
+            Score.Value - scoreAtLoadStart;
+
+        Score.Value =
+            data.Score + scoreDeltaDuringLoad;
 
         databaseReady = true;
         databaseLoadInProgress = false;
 
-        Debug.LogWarning(
-            $"DB 점수 불러오기 실패. 현재 점수로 계속 진행합니다. " +
-            $"PlayerId={PersistentPlayerId}, Score={Score.Value}");
+        Debug.Log(
+            $"계정 점수 불러오기 완료 | " +
+            $"PlayerId={authenticatedPlayerId}, " +
+            $"SavedScore={data.Score}, " +
+            $"AppliedScore={Score.Value}");
+
+        if (scoreDeltaDuringLoad != 0 ||
+            hasPendingSave)
+        {
+            QueueDatabaseSave(
+                Score.Value);
+        }
     }
 
-    private void QueueDatabaseSave(int score)
+    private void QueueDatabaseSave(
+        int score)
     {
-        if (string.IsNullOrWhiteSpace(PersistentPlayerId))
+        if (!HasAuthenticatedSession())
             return;
 
         pendingScore = score;
@@ -261,7 +278,7 @@ public class NetworkScorePlayer : NetworkBehaviour
 
     private async UniTask FlushDatabaseSaveAsync()
     {
-        if (string.IsNullOrWhiteSpace(PersistentPlayerId))
+        if (!HasAuthenticatedSession())
             return;
 
         GameDataApiClient api =
@@ -271,7 +288,7 @@ public class NetworkScorePlayer : NetworkBehaviour
         if (api == null)
         {
             Debug.LogWarning(
-                $"DB 저장 건너뜀: GameDataApiClient 없음 / {PersistentPlayerId}");
+                $"계정 점수 저장 실패: GameDataApiClient 없음");
             return;
         }
 
@@ -279,22 +296,35 @@ public class NetworkScorePlayer : NetworkBehaviour
 
         try
         {
-            while (hasPendingSave)
+            while (hasPendingSave &&
+                   HasAuthenticatedSession())
             {
-                int scoreToSave = pendingScore;
+                int scoreToSave =
+                    pendingScore;
+
+                string tokenForSave =
+                    authenticatedToken;
+
                 hasPendingSave = false;
 
                 PlayerScoreData saved =
-                    await api.SaveScoreAsync(
-                        PersistentPlayerId,
+                    await api.SaveAccountScoreAsync(
+                        tokenForSave,
                         scoreToSave,
                         this.GetCancellationTokenOnDestroy());
 
+                if (tokenForSave != authenticatedToken)
+                    continue;
+
                 if (saved != null)
                 {
+                    authenticatedPlayerId =
+                        saved.PlayerId;
+
                     Debug.Log(
-                        $"DB 점수 저장 완료 | " +
-                        $"PlayerId={PersistentPlayerId}, Score={saved.Score}");
+                        $"계정 점수 저장 완료 | " +
+                        $"PlayerId={authenticatedPlayerId}, " +
+                        $"Score={saved.Score}");
                 }
             }
         }
@@ -304,7 +334,15 @@ public class NetworkScorePlayer : NetworkBehaviour
         }
     }
 
-    private void UpdateScoreText(int value)
+    private bool HasAuthenticatedSession()
+    {
+        return
+            !string.IsNullOrWhiteSpace(authenticatedPlayerId) &&
+            !string.IsNullOrWhiteSpace(authenticatedToken);
+    }
+
+    private void UpdateScoreText(
+        int value)
     {
         if (scoreText != null)
             scoreText.text = $"점수: {value}";
