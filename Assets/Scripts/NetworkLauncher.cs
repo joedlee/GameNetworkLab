@@ -66,6 +66,45 @@ public class NetworkLauncher : MonoBehaviour
             started ? "Client 연결 시도" : "Client 시작 실패";
     }
 
+    public void DisconnectClient()
+    {
+        RegisterCallbacks();
+
+        if (manager == null || !manager.IsListening)
+        {
+            if (statusText != null)
+                statusText.text = "연결된 Client가 없습니다.";
+
+            return;
+        }
+
+        if (manager.IsHost || manager.IsServer)
+        {
+            if (statusText != null)
+                statusText.text = "Host에서는 Client 연결 해제를 사용할 수 없습니다.";
+
+            Debug.LogWarning(
+                "Client 연결 해제 요청 무시: 현재 인스턴스는 Host/Server입니다.");
+            return;
+        }
+
+        if (!manager.IsClient)
+        {
+            if (statusText != null)
+                statusText.text = "현재 인스턴스는 Client가 아닙니다.";
+
+            return;
+        }
+
+        Debug.Log(
+            $"{Timestamp()} LocalClientShutdownRequested ClientId={manager.LocalClientId}");
+
+        if (statusText != null)
+            statusText.text = "Client 연결 해제";
+
+        manager.Shutdown();
+    }
+
     private void RegisterCallbacks()
     {
         if (callbacksRegistered)
