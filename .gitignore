@@ -78,3 +78,9 @@ crashlytics-build.properties
 # Submission console project must include its project file.
 !UdpPeer/
 !UdpPeer/UdpPeer.csproj
+
+# Keep the optional DAY13 server project file, but ignore generated output.
+!Server/GameDataServer/
+!Server/GameDataServer/GameDataServer.csproj
+Server/GameDataServer/bin/
+Server/GameDataServer/obj/
