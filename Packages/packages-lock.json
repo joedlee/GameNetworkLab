@@ -1,10 +1,11 @@
 {
   "dependencies": {
     "com.cysharp.unitask": {
-      "version": "file:C:/Users/Admin/Downloads/UniTask/src/UniTask/Assets/Plugins/UniTask",
+      "version": "2.5.11",
       "depth": 0,
-      "source": "local",
-      "dependencies": {}
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
     },
     "com.unity.ai.navigation": {
       "version": "2.0.15",
