@@ -48,7 +48,10 @@ int x = 0;
 int y = 0;
 int sequence = 0;
 
-RemotePeerState remoteState =
+Dictionary<string, RemotePeerState> remoteStates =
+    new(StringComparer.Ordinal);
+
+object remoteStatesLock =
     new();
 
 Console.WriteLine("=== GameNetworkLab UDP Peer ===");
@@ -64,7 +67,8 @@ Task receiveTask =
     ReceiveLoopAsync(
         udp,
         peerId,
-        remoteState,
+        remoteStates,
+        remoteStatesLock,
         cts.Token);
 
 while (!cts.IsCancellationRequested)
@@ -107,7 +111,8 @@ while (!cts.IsCancellationRequested)
             x,
             y,
             sequence,
-            remoteState);
+            remoteStates,
+            remoteStatesLock);
 
         continue;
     }
@@ -179,7 +184,8 @@ Console.WriteLine("UDP Peer를 종료했습니다.");
 static async Task ReceiveLoopAsync(
     UdpClient udp,
     string localPeerId,
-    RemotePeerState remoteState,
+    Dictionary<string, RemotePeerState> remoteStates,
+    object remoteStatesLock,
     CancellationToken cancellationToken)
 {
     while (!cancellationToken.IsCancellationRequested)
@@ -228,21 +234,61 @@ static async Task ReceiveLoopAsync(
             continue;
         }
 
-        lock (remoteState)
+        bool ignoredAsOldOrDuplicate = false;
+        int lastAppliedSequence = -1;
+
+        lock (remoteStatesLock)
         {
-            remoteState.Received = true;
-            remoteState.PeerId =
-                message.PeerId;
-            remoteState.Sequence =
-                message.Sequence;
-            remoteState.X =
-                message.X;
-            remoteState.Y =
-                message.Y;
+            if (!remoteStates.TryGetValue(
+                    message.PeerId,
+                    out RemotePeerState? state))
+            {
+                state =
+                    new RemotePeerState
+                    {
+                        PeerId =
+                            message.PeerId
+                    };
+
+                remoteStates.Add(
+                    message.PeerId,
+                    state);
+            }
+
+            if (state.Received &&
+                message.Sequence <= state.Sequence)
+            {
+                ignoredAsOldOrDuplicate = true;
+                lastAppliedSequence =
+                    state.Sequence;
+                state.IgnoredOldOrDuplicateCount++;
+            }
+            else
+            {
+                state.Received = true;
+                state.Sequence =
+                    message.Sequence;
+                state.X =
+                    message.X;
+                state.Y =
+                    message.Y;
+                state.AppliedCount++;
+            }
+        }
+
+        if (ignoredAsOldOrDuplicate)
+        {
+            Console.WriteLine(
+                $"\n[RECV IGNORE OLD] Peer={message.PeerId} " +
+                $"IncomingSeq={message.Sequence} " +
+                $"LastAppliedSeq={lastAppliedSequence} " +
+                $"Pos=({message.X}, {message.Y})");
+
+            continue;
         }
 
         Console.WriteLine(
-            $"\n[RECV] Peer={message.PeerId} Seq={message.Sequence} " +
+            $"\n[RECV APPLY] Peer={message.PeerId} Seq={message.Sequence} " +
             $"Pos=({message.X}, {message.Y}) From={result.RemoteEndPoint}");
     }
 }
@@ -309,14 +355,15 @@ static void PrintState(
     int x,
     int y,
     int sequence,
-    RemotePeerState remoteState)
+    Dictionary<string, RemotePeerState> remoteStates,
+    object remoteStatesLock)
 {
     Console.WriteLine(
         $"[LOCAL] Peer={peerId} Seq={sequence} Pos=({x}, {y})");
 
-    lock (remoteState)
+    lock (remoteStatesLock)
     {
-        if (!remoteState.Received)
+        if (remoteStates.Count == 0)
         {
             Console.WriteLine(
                 "[REMOTE] 미수신");
@@ -324,10 +371,18 @@ static void PrintState(
             return;
         }
 
-        Console.WriteLine(
-            $"[REMOTE] Peer={remoteState.PeerId} " +
-            $"Seq={remoteState.Sequence} " +
-            $"Pos=({remoteState.X}, {remoteState.Y})");
+        foreach (RemotePeerState state in
+                 remoteStates.Values.OrderBy(
+                     state => state.PeerId,
+                     StringComparer.Ordinal))
+        {
+            Console.WriteLine(
+                $"[REMOTE] Peer={state.PeerId} " +
+                $"Seq={state.Sequence} " +
+                $"Pos=({state.X}, {state.Y}) " +
+                $"Applied={state.AppliedCount} " +
+                $"IgnoredOldOrDuplicate={state.IgnoredOldOrDuplicateCount}");
+        }
     }
 }
 
@@ -366,6 +421,10 @@ sealed class RemotePeerState
     public int X { get; set; }
 
     public int Y { get; set; }
+
+    public int AppliedCount { get; set; }
+
+    public int IgnoredOldOrDuplicateCount { get; set; }
 }
 
 readonly record struct PositionMessage(
