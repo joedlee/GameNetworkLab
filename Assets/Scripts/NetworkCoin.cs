@@ -11,7 +11,7 @@ public class NetworkCoin : NetworkBehaviour
     private void OnTriggerEnter(Collider other)
     {
         NetworkScorePlayer player =
-            other.GetComponent<NetworkScorePlayer>();
+            other.GetComponentInParent<NetworkScorePlayer>();
 
         if (player == null || !player.IsOwner)
             return;
@@ -26,7 +26,8 @@ public class NetworkCoin : NetworkBehaviour
         if (!IsServer ||
             collected ||
             !IsSpawned ||
-            player == null)
+            player == null ||
+            !player.IsSpawned)
         {
             Debug.LogWarning(
                 $"Coin 요청 거절: 이미 획득했거나 유효하지 않은 Coin | " +
