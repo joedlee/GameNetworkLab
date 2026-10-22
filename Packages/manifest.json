@@ -1,6 +1,15 @@
 {
+  "scopedRegistries": [
+    {
+      "name": "package.openupm.com",
+      "url": "https://package.openupm.com",
+      "scopes": [
+        "com.cysharp.unitask"
+      ]
+    }
+  ],
   "dependencies": {
-    "com.cysharp.unitask": "file:C:/Users/Admin/Downloads/UniTask/src/UniTask/Assets/Plugins/UniTask",
+    "com.cysharp.unitask": "2.5.11",
     "com.unity.ai.navigation": "2.0.15",
     "com.unity.collab-proxy": "2.13.6",
     "com.unity.ide.rider": "3.0.38",
