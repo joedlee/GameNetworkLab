@@ -121,6 +121,32 @@ while (!cts.IsCancellationRequested)
     }
 
     if (command.Equals(
+        "testinvalid",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        await SendTestMessageAsync(
+            udp,
+            remoteEndPoint,
+            "BROKEN|MESSAGE",
+            "INVALID");
+
+        continue;
+    }
+
+    if (command.Equals(
+        "testempty",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        await SendTestMessageAsync(
+            udp,
+            remoteEndPoint,
+            string.Empty,
+            "EMPTY");
+
+        continue;
+    }
+
+    if (command.Equals(
         "testdup",
         StringComparison.OrdinalIgnoreCase))
     {
@@ -295,8 +321,13 @@ static async Task ReceiveLoopAsync(
             raw,
             out PositionMessage message))
         {
+            string displayRaw =
+                raw.Length == 0
+                    ? "<EMPTY>"
+                    : raw;
+
             Console.WriteLine(
-                $"[RECV INVALID] {raw}");
+                $"[RECV INVALID] {displayRaw} | Bytes={result.Buffer.Length}");
 
             continue;
         }
@@ -468,10 +499,12 @@ static void PrintHelp()
     Console.WriteLine("명령:");
     Console.WriteLine("  w/a/s/d  : 자신의 위치를 한 칸 이동하고 즉시 전송");
     Console.WriteLine("  X Y      : 정수 좌표를 직접 지정하고 즉시 전송 (예: 3 5)");
-    Console.WriteLine("  show     : 자신의 위치와 마지막으로 받은 상대 위치 표시");
-    Console.WriteLine("  testdup  : 마지막으로 보낸 메시지를 같은 Sequence/좌표로 재전송");
-    Console.WriteLine("  testold  : 그 이전 메시지를 당시 Sequence/좌표 그대로 재전송");
-    Console.WriteLine("  help     : 도움말");
+    Console.WriteLine("  show        : 자신의 위치와 마지막으로 받은 상대 위치 표시");
+    Console.WriteLine("  testinvalid : 필드 수가 틀린 잘못된 메시지를 전송");
+    Console.WriteLine("  testempty   : 빈 UDP 메시지를 전송");
+    Console.WriteLine("  testdup     : 마지막으로 보낸 메시지를 같은 Sequence/좌표로 재전송");
+    Console.WriteLine("  testold     : 그 이전 메시지를 당시 Sequence/좌표 그대로 재전송");
+    Console.WriteLine("  help        : 도움말");
     Console.WriteLine("  quit     : 종료");
     Console.WriteLine();
 }
