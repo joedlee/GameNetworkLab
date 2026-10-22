@@ -48,7 +48,7 @@ public class NetworkRequestBenchmark : NetworkBehaviour
             return;
 
         const float width = 320f;
-        const float height = 460f;
+        const float height = 500f;
 
         Rect panelRect =
             new Rect(
@@ -110,7 +110,14 @@ public class NetworkRequestBenchmark : NetworkBehaviour
         GUILayout.EndHorizontal();
 
         GUILayout.Space(8f);
-        GUILayout.Label("DAY15 잘못된 코인 요청 검증");
+        GUILayout.Label("DAY15 코인 요청 검증");
+
+        if (GUILayout.Button(
+            "가까운 코인 정상 요청",
+            GUILayout.Height(30f)))
+        {
+            TestValidCoinRequest();
+        }
 
         if (GUILayout.Button(
             "잘못된 Coin ID 요청",
@@ -139,6 +146,130 @@ public class NetworkRequestBenchmark : NetworkBehaviour
         GUILayout.Label(resultText);
 
         GUILayout.EndArea();
+    }
+
+    private void TestValidCoinRequest()
+    {
+        if (scorePlayer == null)
+        {
+            resultText =
+                "정상 요청 시험 실패: NetworkScorePlayer 없음";
+
+            return;
+        }
+
+        NetworkCoin[] coins =
+            FindObjectsByType<NetworkCoin>(
+                FindObjectsSortMode.None);
+
+        NetworkCoin nearestCoin = null;
+        float nearestDistance =
+            float.MaxValue;
+
+        foreach (NetworkCoin coin in coins)
+        {
+            if (coin == null ||
+                !coin.IsSpawned)
+            {
+                continue;
+            }
+
+            float distance =
+                Vector3.Distance(
+                    transform.position,
+                    coin.transform.position);
+
+            if (distance >= nearestDistance)
+                continue;
+
+            nearestCoin =
+                coin;
+
+            nearestDistance =
+                distance;
+        }
+
+        if (nearestCoin == null)
+        {
+            resultText =
+                "정상 요청 시험 실패: 남아 있는 코인 없음";
+
+            return;
+        }
+
+        if (nearestDistance > 2f)
+        {
+            resultText =
+                $"가까운 코인까지 거리 {nearestDistance:F2}\n" +
+                "2.0 이내로 이동 후 다시 실행하세요.";
+
+            return;
+        }
+
+        int scoreBefore =
+            scorePlayer.Score.Value;
+
+        ulong coinId =
+            nearestCoin.NetworkObjectId;
+
+        UnityEngine.Debug.Log(
+            $"DAY15 ValidCoinTestStart | " +
+            $"ClientId={OwnerClientId} | " +
+            $"CoinNetworkObjectId={coinId} | " +
+            $"Distance={nearestDistance:F2} | " +
+            $"ScoreBefore={scoreBefore}");
+
+        scorePlayer.RequestCollectCoin(
+            coinId);
+
+        resultText =
+            $"정상 Coin 요청 전송\n" +
+            $"Coin ID: {coinId}\n" +
+            $"거리: {nearestDistance:F2}\n" +
+            "기대 결과: Server 승인 / 점수 +1 / 코인 제거";
+
+        StartCoroutine(
+            CheckValidCoinRequestResult(
+                coinId,
+                scoreBefore));
+    }
+
+    private IEnumerator CheckValidCoinRequestResult(
+        ulong coinId,
+        int scoreBefore)
+    {
+        yield return new WaitForSeconds(
+            0.5f);
+
+        if (scorePlayer == null)
+            yield break;
+
+        int scoreAfter =
+            scorePlayer.Score.Value;
+
+        bool coinStillSpawned =
+            NetworkManager != null &&
+            NetworkManager.SpawnManager != null &&
+            NetworkManager.SpawnManager.SpawnedObjects.ContainsKey(
+                coinId);
+
+        bool passed =
+            scoreAfter == scoreBefore + 1 &&
+            !coinStillSpawned;
+
+        resultText =
+            $"정상 요청 시험 {(passed ? "통과" : "확인 필요")}\n" +
+            $"점수 변화: {scoreBefore} → {scoreAfter}\n" +
+            $"코인 제거: {!coinStillSpawned}";
+
+        UnityEngine.Debug.Log(
+            $"DAY15 ValidCoinTestResult | " +
+            $"ClientId={OwnerClientId} | " +
+            $"CoinNetworkObjectId={coinId} | " +
+            $"ScoreBefore={scoreBefore} | " +
+            $"ScoreAfter={scoreAfter} | " +
+            $"CoinRemoved={!coinStillSpawned} | " +
+            $"Pass={passed}");
     }
 
     private void TestInvalidCoinId()
