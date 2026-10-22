@@ -1710,9 +1710,9 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1716638680}
-        m_TargetAssemblyTypeName: NetworkLauncher, Assembly-CSharp
-        m_MethodName: StartClient
+      - m_Target: {fileID: 1244713206}
+        m_TargetAssemblyTypeName: ConnectUiController, Assembly-CSharp
+        m_MethodName: StartClientFromButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -2842,6 +2842,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ConnectUiController
   connectButton: {fileID: 1112545411}
+  clientButton: {fileID: 754751801}
   retryButton: {fileID: 1435760375}
   statusText: {fileID: 1391626194}
 --- !u!114 &1244713208
