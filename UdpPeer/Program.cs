@@ -48,6 +48,9 @@ int x = 0;
 int y = 0;
 int sequence = 0;
 
+string? lastSentMessage = null;
+string? previousSentMessage = null;
+
 Dictionary<string, RemotePeerState> remoteStates =
     new(StringComparer.Ordinal);
 
@@ -117,6 +120,48 @@ while (!cts.IsCancellationRequested)
         continue;
     }
 
+    if (command.Equals(
+        "testdup",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        if (lastSentMessage == null)
+        {
+            Console.WriteLine(
+                "[TEST] 먼저 정상 위치 메시지를 1회 이상 보내세요.");
+
+            continue;
+        }
+
+        await SendTestMessageAsync(
+            udp,
+            remoteEndPoint,
+            lastSentMessage,
+            "DUPLICATE");
+
+        continue;
+    }
+
+    if (command.Equals(
+        "testold",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        if (previousSentMessage == null)
+        {
+            Console.WriteLine(
+                "[TEST] 오래된 메시지 시험은 정상 위치 메시지를 2회 이상 보낸 뒤 실행하세요.");
+
+            continue;
+        }
+
+        await SendTestMessageAsync(
+            udp,
+            remoteEndPoint,
+            previousSentMessage,
+            "OLD");
+
+        continue;
+    }
+
     bool changed =
         TryApplyMovementCommand(
             command,
@@ -159,6 +204,12 @@ while (!cts.IsCancellationRequested)
             payload,
             remoteEndPoint);
 
+        previousSentMessage =
+            lastSentMessage;
+
+        lastSentMessage =
+            message;
+
         Console.WriteLine(
             $"[SEND] Peer={peerId} Seq={sequence} Pos=({x}, {y}) Bytes={payload.Length}");
     }
@@ -180,6 +231,32 @@ catch (OperationCanceledException)
 }
 
 Console.WriteLine("UDP Peer를 종료했습니다.");
+
+static async Task SendTestMessageAsync(
+    UdpClient udp,
+    IPEndPoint remoteEndPoint,
+    string rawMessage,
+    string testKind)
+{
+    byte[] payload =
+        Encoding.UTF8.GetBytes(
+            rawMessage);
+
+    try
+    {
+        await udp.SendAsync(
+            payload,
+            remoteEndPoint);
+
+        Console.WriteLine(
+            $"[TEST SEND {testKind}] {rawMessage} Bytes={payload.Length}");
+    }
+    catch (SocketException ex)
+    {
+        Console.WriteLine(
+            $"[TEST SEND ERROR] {ex.SocketErrorCode}: {ex.Message}");
+    }
+}
 
 static async Task ReceiveLoopAsync(
     UdpClient udp,
@@ -392,6 +469,8 @@ static void PrintHelp()
     Console.WriteLine("  w/a/s/d  : 자신의 위치를 한 칸 이동하고 즉시 전송");
     Console.WriteLine("  X Y      : 정수 좌표를 직접 지정하고 즉시 전송 (예: 3 5)");
     Console.WriteLine("  show     : 자신의 위치와 마지막으로 받은 상대 위치 표시");
+    Console.WriteLine("  testdup  : 마지막으로 보낸 메시지를 같은 Sequence/좌표로 재전송");
+    Console.WriteLine("  testold  : 그 이전 메시지를 당시 Sequence/좌표 그대로 재전송");
     Console.WriteLine("  help     : 도움말");
     Console.WriteLine("  quit     : 종료");
     Console.WriteLine();
