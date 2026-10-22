@@ -26,6 +26,13 @@ public class NetworkCoopGoal : NetworkBehaviour
 
         CreateRuntimeUi();
         UpdateGoalUi();
+
+        Debug.Log(
+            $"DAY15 SharedGoalSnapshot | " +
+            $"Role={(IsServer ? "Server" : "Client")} | " +
+            $"Collected={CollectedCoins.Value} | " +
+            $"Remaining={Mathf.Max(0, targetCoinCount - CollectedCoins.Value)} | " +
+            $"Succeeded={GameSucceeded.Value}");
     }
 
     public override void OnNetworkDespawn()
