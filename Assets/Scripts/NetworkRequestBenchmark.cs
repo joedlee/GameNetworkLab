@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Unity.Netcode;
@@ -19,8 +20,16 @@ public class NetworkRequestBenchmark : NetworkBehaviour
     private bool running;
     private bool tunedMode;
 
+    private NetworkScorePlayer scorePlayer;
+
     private string resultText =
         "DAY14 요청 테스트 대기";
+
+    private void Awake()
+    {
+        scorePlayer =
+            GetComponent<NetworkScorePlayer>();
+    }
 
     private void Update()
     {
@@ -39,7 +48,7 @@ public class NetworkRequestBenchmark : NetworkBehaviour
             return;
 
         const float width = 320f;
-        const float height = 290f;
+        const float height = 350f;
 
         Rect panelRect =
             new Rect(
@@ -100,12 +109,142 @@ public class NetworkRequestBenchmark : NetworkBehaviour
 
         GUILayout.EndHorizontal();
 
+        GUILayout.Space(8f);
+        GUILayout.Label("DAY15 코인 중복 요청 검증");
+
+        if (GUILayout.Button(
+            "가까운 코인에 2회 동시 요청",
+            GUILayout.Height(30f)))
+        {
+            TestDuplicateCoinRequest();
+        }
+
         GUI.enabled = true;
 
         GUILayout.Space(6f);
         GUILayout.Label(resultText);
 
         GUILayout.EndArea();
+    }
+
+    private void TestDuplicateCoinRequest()
+    {
+        if (scorePlayer == null)
+        {
+            resultText =
+                "중복 요청 시험 실패: NetworkScorePlayer 없음";
+
+            return;
+        }
+
+        NetworkCoin[] coins =
+            FindObjectsByType<NetworkCoin>(
+                FindObjectsSortMode.None);
+
+        NetworkCoin nearestCoin = null;
+        float nearestDistance =
+            float.MaxValue;
+
+        foreach (NetworkCoin coin in coins)
+        {
+            if (coin == null ||
+                !coin.IsSpawned)
+            {
+                continue;
+            }
+
+            float distance =
+                Vector3.Distance(
+                    transform.position,
+                    coin.transform.position);
+
+            if (distance >= nearestDistance)
+                continue;
+
+            nearestCoin = coin;
+            nearestDistance = distance;
+        }
+
+        if (nearestCoin == null)
+        {
+            resultText =
+                "중복 요청 시험 실패: 남아 있는 코인 없음";
+
+            return;
+        }
+
+        if (nearestDistance > 2f)
+        {
+            resultText =
+                $"코인에 더 가까이 이동하세요. 거리 {nearestDistance:F2}";
+
+            return;
+        }
+
+        int scoreBefore =
+            scorePlayer.Score.Value;
+
+        ulong coinId =
+            nearestCoin.NetworkObjectId;
+
+        UnityEngine.Debug.Log(
+            $"DAY15 DuplicateCoinTestStart | " +
+            $"ClientId={OwnerClientId} | " +
+            $"CoinNetworkObjectId={coinId} | " +
+            $"ScoreBefore={scoreBefore} | " +
+            $"Requests=2");
+
+        scorePlayer.RequestCollectCoin(
+            coinId);
+
+        scorePlayer.RequestCollectCoin(
+            coinId);
+
+        resultText =
+            $"중복 요청 전송 완료\n" +
+            $"Coin ID: {coinId}\n" +
+            $"요청: 2회 / 기대 보상: 1회";
+
+        StartCoroutine(
+            CheckDuplicateCoinResult(
+                coinId,
+                scoreBefore));
+    }
+
+    private IEnumerator CheckDuplicateCoinResult(
+        ulong coinId,
+        int scoreBefore)
+    {
+        yield return new WaitForSeconds(
+            0.5f);
+
+        if (scorePlayer == null)
+            yield break;
+
+        int scoreAfter =
+            scorePlayer.Score.Value;
+
+        int scoreDelta =
+            scoreAfter - scoreBefore;
+
+        bool passed =
+            scoreDelta == 1;
+
+        resultText =
+            $"중복 요청 시험 {(passed ? "통과" : "확인 필요")}\n" +
+            $"요청: 2회\n" +
+            $"점수 변화: {scoreBefore} → {scoreAfter}\n" +
+            $"보상 횟수: {scoreDelta}";
+
+        UnityEngine.Debug.Log(
+            $"DAY15 DuplicateCoinTestResult | " +
+            $"ClientId={OwnerClientId} | " +
+            $"CoinNetworkObjectId={coinId} | " +
+            $"Requests=2 | " +
+            $"ScoreBefore={scoreBefore} | " +
+            $"ScoreAfter={scoreAfter} | " +
+            $"RewardCount={scoreDelta} | " +
+            $"Pass={passed}");
     }
 
     private void StartIndividualBenchmark(
