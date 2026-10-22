@@ -56,6 +56,19 @@ public class NetworkCoin : NetworkBehaviour
 
         player.AddScoreFromServer(1);
 
+        NetworkCoopGoal coopGoal =
+            FindFirstObjectByType<NetworkCoopGoal>();
+
+        if (coopGoal != null)
+        {
+            coopGoal.RegisterCoinCollectedServer();
+        }
+        else
+        {
+            Debug.LogWarning(
+                "Coin 획득은 승인됐지만 NetworkCoopGoal을 찾지 못했습니다.");
+        }
+
         Debug.Log(
             $"Coin 요청 승인 | " +
             $"Player={player.OwnerClientId}, " +
