@@ -1,0 +1,447 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+
+if (args.Length < 3)
+{
+    PrintUsage();
+    return;
+}
+
+string peerId =
+    args[0].Trim();
+
+if (string.IsNullOrWhiteSpace(peerId))
+{
+    Console.WriteLine("PeerId는 비어 있을 수 없습니다.");
+    return;
+}
+
+if (!int.TryParse(args[1], out int localPort) ||
+    !int.TryParse(args[2], out int remotePort))
+{
+    Console.WriteLine("포트는 정수여야 합니다.");
+    PrintUsage();
+    return;
+}
+
+if (localPort == remotePort)
+{
+    Console.WriteLine("같은 컴퓨터에서 시험하므로 LocalPort와 RemotePort는 달라야 합니다.");
+    return;
+}
+
+using UdpClient udp =
+    new(new IPEndPoint(
+        IPAddress.Loopback,
+        localPort));
+
+IPEndPoint remoteEndPoint =
+    new(
+        IPAddress.Loopback,
+        remotePort);
+
+using CancellationTokenSource cts =
+    new();
+
+int x = 0;
+int y = 0;
+int sequence = 0;
+
+RemotePeerState remoteState =
+    new();
+
+Console.WriteLine("=== GameNetworkLab UDP Peer ===");
+Console.WriteLine(
+    $"PeerId={peerId} | Local=127.0.0.1:{localPort} | Remote=127.0.0.1:{remotePort}");
+Console.WriteLine(
+    "메시지 형식: POS|PeerId|Sequence|X|Y");
+Console.WriteLine();
+
+PrintHelp();
+
+Task receiveTask =
+    ReceiveLoopAsync(
+        udp,
+        peerId,
+        remoteState,
+        cts.Token);
+
+while (!cts.IsCancellationRequested)
+{
+    Console.Write("> ");
+
+    string? input =
+        Console.ReadLine();
+
+    if (input == null)
+        break;
+
+    string command =
+        input.Trim();
+
+    if (command.Length == 0)
+        continue;
+
+    if (command.Equals(
+        "quit",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        break;
+    }
+
+    if (command.Equals(
+        "help",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        PrintHelp();
+        continue;
+    }
+
+    if (command.Equals(
+        "show",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        PrintState(
+            peerId,
+            x,
+            y,
+            sequence,
+            remoteState);
+
+        continue;
+    }
+
+    bool changed =
+        TryApplyMovementCommand(
+            command,
+            ref x,
+            ref y);
+
+    if (!changed)
+    {
+        changed =
+            TryApplyCoordinateCommand(
+                command,
+                ref x,
+                ref y);
+    }
+
+    if (!changed)
+    {
+        Console.WriteLine(
+            "알 수 없는 명령입니다. help를 입력해 조작법을 확인하세요.");
+
+        continue;
+    }
+
+    sequence++;
+
+    string message =
+        PositionMessage.Create(
+            peerId,
+            sequence,
+            x,
+            y);
+
+    byte[] payload =
+        Encoding.UTF8.GetBytes(
+            message);
+
+    try
+    {
+        await udp.SendAsync(
+            payload,
+            remoteEndPoint);
+
+        Console.WriteLine(
+            $"[SEND] Peer={peerId} Seq={sequence} Pos=({x}, {y}) Bytes={payload.Length}");
+    }
+    catch (SocketException ex)
+    {
+        Console.WriteLine(
+            $"[SEND ERROR] {ex.SocketErrorCode}: {ex.Message}");
+    }
+}
+
+cts.Cancel();
+
+try
+{
+    await receiveTask;
+}
+catch (OperationCanceledException)
+{
+}
+
+Console.WriteLine("UDP Peer를 종료했습니다.");
+
+static async Task ReceiveLoopAsync(
+    UdpClient udp,
+    string localPeerId,
+    RemotePeerState remoteState,
+    CancellationToken cancellationToken)
+{
+    while (!cancellationToken.IsCancellationRequested)
+    {
+        UdpReceiveResult result;
+
+        try
+        {
+            result =
+                await udp.ReceiveAsync(
+                    cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            break;
+        }
+        catch (SocketException ex)
+        {
+            Console.WriteLine(
+                $"[RECV ERROR] {ex.SocketErrorCode}: {ex.Message}");
+
+            continue;
+        }
+
+        string raw =
+            Encoding.UTF8.GetString(
+                result.Buffer);
+
+        if (!PositionMessage.TryParse(
+            raw,
+            out PositionMessage message))
+        {
+            Console.WriteLine(
+                $"[RECV INVALID] {raw}");
+
+            continue;
+        }
+
+        if (message.PeerId.Equals(
+            localPeerId,
+            StringComparison.Ordinal))
+        {
+            Console.WriteLine(
+                $"[RECV IGNORE] 자신의 PeerId 메시지: {message.PeerId}");
+
+            continue;
+        }
+
+        lock (remoteState)
+        {
+            remoteState.Received = true;
+            remoteState.PeerId =
+                message.PeerId;
+            remoteState.Sequence =
+                message.Sequence;
+            remoteState.X =
+                message.X;
+            remoteState.Y =
+                message.Y;
+        }
+
+        Console.WriteLine(
+            $"\n[RECV] Peer={message.PeerId} Seq={message.Sequence} " +
+            $"Pos=({message.X}, {message.Y}) From={result.RemoteEndPoint}");
+    }
+}
+
+static bool TryApplyMovementCommand(
+    string command,
+    ref int x,
+    ref int y)
+{
+    switch (command.ToLowerInvariant())
+    {
+        case "w":
+            y++;
+            return true;
+
+        case "s":
+            y--;
+            return true;
+
+        case "a":
+            x--;
+            return true;
+
+        case "d":
+            x++;
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static bool TryApplyCoordinateCommand(
+    string command,
+    ref int x,
+    ref int y)
+{
+    string[] parts =
+        command.Split(
+            ' ',
+            StringSplitOptions.RemoveEmptyEntries);
+
+    if (parts.Length != 2)
+        return false;
+
+    if (!int.TryParse(
+            parts[0],
+            out int newX) ||
+        !int.TryParse(
+            parts[1],
+            out int newY))
+    {
+        return false;
+    }
+
+    x = newX;
+    y = newY;
+
+    return true;
+}
+
+static void PrintState(
+    string peerId,
+    int x,
+    int y,
+    int sequence,
+    RemotePeerState remoteState)
+{
+    Console.WriteLine(
+        $"[LOCAL] Peer={peerId} Seq={sequence} Pos=({x}, {y})");
+
+    lock (remoteState)
+    {
+        if (!remoteState.Received)
+        {
+            Console.WriteLine(
+                "[REMOTE] 미수신");
+
+            return;
+        }
+
+        Console.WriteLine(
+            $"[REMOTE] Peer={remoteState.PeerId} " +
+            $"Seq={remoteState.Sequence} " +
+            $"Pos=({remoteState.X}, {remoteState.Y})");
+    }
+}
+
+static void PrintHelp()
+{
+    Console.WriteLine("명령:");
+    Console.WriteLine("  w/a/s/d  : 자신의 위치를 한 칸 이동하고 즉시 전송");
+    Console.WriteLine("  X Y      : 정수 좌표를 직접 지정하고 즉시 전송 (예: 3 5)");
+    Console.WriteLine("  show     : 자신의 위치와 마지막으로 받은 상대 위치 표시");
+    Console.WriteLine("  help     : 도움말");
+    Console.WriteLine("  quit     : 종료");
+    Console.WriteLine();
+}
+
+static void PrintUsage()
+{
+    Console.WriteLine(
+        "사용법: dotnet run --project UdpPeer/UdpPeer.csproj -- <PeerId> <LocalPort> <RemotePort>");
+
+    Console.WriteLine(
+        "예시 A: dotnet run --project UdpPeer/UdpPeer.csproj -- A 9001 9002");
+
+    Console.WriteLine(
+        "예시 B: dotnet run --project UdpPeer/UdpPeer.csproj -- B 9002 9001");
+}
+
+sealed class RemotePeerState
+{
+    public bool Received { get; set; }
+
+    public string PeerId { get; set; } =
+        string.Empty;
+
+    public int Sequence { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+}
+
+readonly record struct PositionMessage(
+    string PeerId,
+    int Sequence,
+    int X,
+    int Y)
+{
+    private const string MessageType =
+        "POS";
+
+    public static string Create(
+        string peerId,
+        int sequence,
+        int x,
+        int y)
+    {
+        return
+            $"{MessageType}|{peerId}|{sequence}|{x}|{y}";
+    }
+
+    public static bool TryParse(
+        string raw,
+        out PositionMessage message)
+    {
+        message = default;
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        string[] fields =
+            raw.Split('|');
+
+        if (fields.Length != 5 ||
+            !fields[0].Equals(
+                MessageType,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string senderPeerId =
+            fields[1].Trim();
+
+        if (senderPeerId.Length == 0)
+            return false;
+
+        if (!int.TryParse(
+                fields[2],
+                out int sequence) ||
+            sequence < 0)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(
+                fields[3],
+                out int x))
+        {
+            return false;
+        }
+
+        if (!int.TryParse(
+                fields[4],
+                out int y))
+        {
+            return false;
+        }
+
+        message =
+            new PositionMessage(
+                senderPeerId,
+                sequence,
+                x,
+                y);
+
+        return true;
+    }
+}
