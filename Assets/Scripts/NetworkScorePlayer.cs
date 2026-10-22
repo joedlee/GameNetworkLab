@@ -83,6 +83,25 @@ public class NetworkScorePlayer : NetworkBehaviour
         RequestAddScoreRpc();
     }
 
+    public void RequestCollectCoin(
+        ulong coinNetworkObjectId)
+    {
+        if (!IsOwner)
+            return;
+
+        RequestCollectCoinRpc(
+            coinNetworkObjectId);
+    }
+
+    public void AddScoreFromServer(
+        int amount)
+    {
+        if (!IsServer || amount <= 0)
+            return;
+
+        Score.Value += amount;
+    }
+
     public void RequestSaveToDatabase()
     {
         if (!IsOwner)
@@ -141,6 +160,49 @@ public class NetworkScorePlayer : NetworkBehaviour
 
         Debug.Log(
             $"Server가 점수를 {Score.Value}로 변경했습니다.");
+    }
+
+    [Rpc(SendTo.Server)]
+    private void RequestCollectCoinRpc(
+        ulong coinNetworkObjectId)
+    {
+        if (NetworkManager == null ||
+            NetworkManager.SpawnManager == null)
+        {
+            Debug.LogWarning(
+                $"Coin 요청 거절: SpawnManager 없음 | " +
+                $"Player={OwnerClientId}, " +
+                $"CoinNetworkObjectId={coinNetworkObjectId}");
+
+            return;
+        }
+
+        if (!NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(
+                coinNetworkObjectId,
+                out NetworkObject coinObject))
+        {
+            Debug.LogWarning(
+                $"Coin 요청 거절: 잘못된 Coin ID 또는 이미 제거된 Coin | " +
+                $"Player={OwnerClientId}, " +
+                $"CoinNetworkObjectId={coinNetworkObjectId}");
+
+            return;
+        }
+
+        NetworkCoin coin =
+            coinObject.GetComponent<NetworkCoin>();
+
+        if (coin == null)
+        {
+            Debug.LogWarning(
+                $"Coin 요청 거절: 대상이 NetworkCoin이 아님 | " +
+                $"Player={OwnerClientId}, " +
+                $"NetworkObjectId={coinNetworkObjectId}");
+
+            return;
+        }
+
+        coin.TryCollectServer(this);
     }
 
     [Rpc(SendTo.Server)]
