@@ -89,7 +89,7 @@ public class ConnectUiController : MonoBehaviour
             .Forget();
     }
 
-    private async UniTaskVoid StartConnectionAsync(
+    private async UniTask StartConnectionAsync(
         ConnectionMode mode)
     {
         manager ??=
