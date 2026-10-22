@@ -48,7 +48,7 @@ public class NetworkRequestBenchmark : NetworkBehaviour
             return;
 
         const float width = 320f;
-        const float height = 350f;
+        const float height = 460f;
 
         Rect panelRect =
             new Rect(
@@ -110,7 +110,21 @@ public class NetworkRequestBenchmark : NetworkBehaviour
         GUILayout.EndHorizontal();
 
         GUILayout.Space(8f);
-        GUILayout.Label("DAY15 코인 중복 요청 검증");
+        GUILayout.Label("DAY15 잘못된 코인 요청 검증");
+
+        if (GUILayout.Button(
+            "잘못된 Coin ID 요청",
+            GUILayout.Height(30f)))
+        {
+            TestInvalidCoinId();
+        }
+
+        if (GUILayout.Button(
+            "너무 먼 Coin 요청",
+            GUILayout.Height(30f)))
+        {
+            TestTooFarCoinRequest();
+        }
 
         if (GUILayout.Button(
             "가까운 코인에 2회 동시 요청",
@@ -125,6 +139,155 @@ public class NetworkRequestBenchmark : NetworkBehaviour
         GUILayout.Label(resultText);
 
         GUILayout.EndArea();
+    }
+
+    private void TestInvalidCoinId()
+    {
+        if (scorePlayer == null)
+        {
+            resultText =
+                "잘못된 ID 시험 실패: NetworkScorePlayer 없음";
+
+            return;
+        }
+
+        const ulong invalidCoinId =
+            ulong.MaxValue;
+
+        int scoreBefore =
+            scorePlayer.Score.Value;
+
+        UnityEngine.Debug.Log(
+            $"DAY15 InvalidCoinIdTestStart | " +
+            $"ClientId={OwnerClientId} | " +
+            $"CoinNetworkObjectId={invalidCoinId} | " +
+            $"ScoreBefore={scoreBefore}");
+
+        scorePlayer.RequestCollectCoin(
+            invalidCoinId);
+
+        resultText =
+            $"잘못된 Coin ID 요청 전송\n" +
+            $"Coin ID: {invalidCoinId}\n" +
+            $"기대 결과: Server 거절 / 점수 변화 없음";
+
+        StartCoroutine(
+            CheckRejectedRequestResult(
+                "InvalidCoinId",
+                scoreBefore));
+    }
+
+    private void TestTooFarCoinRequest()
+    {
+        if (scorePlayer == null)
+        {
+            resultText =
+                "거리 초과 시험 실패: NetworkScorePlayer 없음";
+
+            return;
+        }
+
+        NetworkCoin[] coins =
+            FindObjectsByType<NetworkCoin>(
+                FindObjectsSortMode.None);
+
+        NetworkCoin farthestCoin = null;
+        float farthestDistance = 0f;
+
+        foreach (NetworkCoin coin in coins)
+        {
+            if (coin == null ||
+                !coin.IsSpawned)
+            {
+                continue;
+            }
+
+            float distance =
+                Vector3.Distance(
+                    transform.position,
+                    coin.transform.position);
+
+            if (distance <= farthestDistance)
+                continue;
+
+            farthestCoin = coin;
+            farthestDistance = distance;
+        }
+
+        if (farthestCoin == null)
+        {
+            resultText =
+                "거리 초과 시험 실패: 남아 있는 코인 없음";
+
+            return;
+        }
+
+        if (farthestDistance <= 2f)
+        {
+            resultText =
+                $"모든 코인이 너무 가깝습니다.\n" +
+                $"코인에서 더 멀리 이동 후 다시 실행하세요.\n" +
+                $"현재 최대 거리: {farthestDistance:F2}";
+
+            return;
+        }
+
+        int scoreBefore =
+            scorePlayer.Score.Value;
+
+        ulong coinId =
+            farthestCoin.NetworkObjectId;
+
+        UnityEngine.Debug.Log(
+            $"DAY15 TooFarCoinTestStart | " +
+            $"ClientId={OwnerClientId} | " +
+            $"CoinNetworkObjectId={coinId} | " +
+            $"Distance={farthestDistance:F2} | " +
+            $"ScoreBefore={scoreBefore}");
+
+        scorePlayer.RequestCollectCoin(
+            coinId);
+
+        resultText =
+            $"거리 초과 Coin 요청 전송\n" +
+            $"Coin ID: {coinId}\n" +
+            $"거리: {farthestDistance:F2}\n" +
+            $"기대 결과: Server 거절 / 점수 변화 없음";
+
+        StartCoroutine(
+            CheckRejectedRequestResult(
+                "TooFar",
+                scoreBefore));
+    }
+
+    private IEnumerator CheckRejectedRequestResult(
+        string testName,
+        int scoreBefore)
+    {
+        yield return new WaitForSeconds(
+            0.5f);
+
+        if (scorePlayer == null)
+            yield break;
+
+        int scoreAfter =
+            scorePlayer.Score.Value;
+
+        bool passed =
+            scoreAfter == scoreBefore;
+
+        resultText =
+            $"{testName} 시험 {(passed ? "통과" : "실패")}\n" +
+            $"점수 변화: {scoreBefore} → {scoreAfter}\n" +
+            $"기대: 변화 없음";
+
+        UnityEngine.Debug.Log(
+            $"DAY15 RejectedCoinRequestTestResult | " +
+            $"Test={testName} | " +
+            $"ClientId={OwnerClientId} | " +
+            $"ScoreBefore={scoreBefore} | " +
+            $"ScoreAfter={scoreAfter} | " +
+            $"Pass={passed}");
     }
 
     private void TestDuplicateCoinRequest()
