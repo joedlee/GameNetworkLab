@@ -75,14 +75,6 @@ public class NetworkScorePlayer : NetworkBehaviour
         ClearAuthenticatedSessionRpc();
     }
 
-    public void RequestAddScore()
-    {
-        if (!IsOwner)
-            return;
-
-        RequestAddScoreRpc();
-    }
-
     public void RequestCollectCoin(
         ulong coinNetworkObjectId)
     {
@@ -151,15 +143,6 @@ public class NetworkScorePlayer : NetworkBehaviour
 
         Debug.Log(
             $"계정 세션 해제 | OwnerClientId={OwnerClientId}");
-    }
-
-    [Rpc(SendTo.Server)]
-    private void RequestAddScoreRpc()
-    {
-        Score.Value += 1;
-
-        Debug.Log(
-            $"Server가 점수를 {Score.Value}로 변경했습니다.");
     }
 
     [Rpc(SendTo.Server)]
