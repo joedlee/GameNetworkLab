@@ -8,6 +8,12 @@ public class NetworkPlayerMove : NetworkBehaviour
     [SerializeField] private float speed = 4f;
 
     private InputAction moveAction;
+    private CharacterController characterController;
+
+    private void Awake()
+    {
+        characterController = GetComponent<CharacterController>();
+    }
 
     public override void OnNetworkSpawn()
     {
@@ -45,6 +51,6 @@ public class NetworkPlayerMove : NetworkBehaviour
             * speed
             * Time.deltaTime;
 
-        transform.position += movement;
+        characterController.Move(movement);
     }
 }
