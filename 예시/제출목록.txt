@@ -1,0 +1,46 @@
+GameNetworkLab 제출목록 예시
+
+1. Unity NGO 코인 게임
+- Assets/
+- Packages/
+- ProjectSettings/
+- 메인 씬: Assets/Scenes/NetworkPlay.unity
+
+2. UDP Peer
+- UdpPeer/UdpPeer.csproj
+- UdpPeer/Program.cs
+
+3. 문서
+- README.md
+- DESIGN.md
+- TEST_REPORT.md
+
+4. Evidence
+- Host/Client 연결
+- 코인 정상 획득
+- 잘못된 Coin ID 거절
+- 거리 초과 거절
+- 중복 요청 1회 보상
+- 코인 3개 후 게임 성공
+- Client 종료 후 Host 유지
+- 재접속 상태 복원
+- UDP A/B 위치 동기화
+- old/duplicate Sequence 무시
+- malformed 메시지 안전 처리
+- load10
+- load100
+
+제출에서 제외
+- Library/
+- Temp/
+- Logs/
+- Obj/
+- bin/
+- obj/
+
+GitHub 링크 제출 시
+- 제출 기간 동안 저장소 공개 여부 확인
+
+주의
+- 예시/ 폴더의 파일들은 참고용이다.
+- 실제 제출본에는 최종 실행 결과와 본인이 확인한 수치를 넣는다.
